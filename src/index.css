@@ -1,0 +1,24 @@
+@import "tailwindcss";
+
+@media print {
+  body {
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+    background-color: white !important;
+  }
+  
+  @page {
+    margin: 0;
+    size: letter;
+  }
+  
+  .resume-preview-container {
+    width: 8.5in !important;
+    height: 11in !important;
+    padding: 0.5in !important;
+    margin: 0 !important;
+    box-shadow: none !important;
+    border: none !important;
+  }
+}
+

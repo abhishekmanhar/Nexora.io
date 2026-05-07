@@ -1,0 +1,75 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // ===============================================================
+    // Helper Functions
+    // ===============================================================
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+    
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+
+    function isAdmin() {
+      return isAuthenticated() &&
+        (get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin' ||
+          (request.auth.token.email == "abhimanharkhan25@gmail.com" && request.auth.token.email_verified == true));
+    }
+
+    function isRecruiter() {
+      return isAuthenticated() &&
+        (get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'recruiter' || isAdmin());
+    }
+
+    // ===============================================================
+    // Domain Validators
+    // ===============================================================
+    function isValidUser(data) {
+      return data.keys().hasAll(['uid', 'email', 'role', 'createdAt']) &&
+             data.uid is string && data.uid.size() > 0 &&
+             data.email is string && data.email.matches("^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}$") &&
+             data.role in ['candidate', 'recruiter', 'admin'] &&
+             data.createdAt is string;
+    }
+
+    function isValidJob(data) {
+      return data.keys().hasAll(['title', 'company', 'location', 'type', 'salary', 'tags', 'logo', 'postedBy', 'createdAt']) &&
+             data.title is string && data.title.size() > 0 && data.title.size() < 100 &&
+             data.company is string && data.company.size() > 0 && data.company.size() < 100 &&
+             data.location is string && data.location.size() > 0 && data.location.size() < 100 &&
+             data.type is string && data.type.size() > 0 && data.type.size() < 50 &&
+             data.salary is string && data.salary.size() > 0 && data.salary.size() < 50 &&
+             data.tags is list && data.tags.size() <= 10 &&
+             data.logo is string && data.logo.size() > 0 && data.logo.size() < 255 &&
+             data.postedBy is string && data.postedBy.size() > 0 &&
+             data.createdAt is string &&
+             (!('applyUrl' in data) || (data.applyUrl is string && data.applyUrl.size() < 500));
+    }
+
+    // ===============================================================
+    // Rules
+    // ===============================================================
+    match /users/{userId} {
+      allow read: if isOwner(userId) || isAdmin();
+      allow create: if isAuthenticated() && isOwner(userId) && isValidUser(request.resource.data) && 
+                    (request.resource.data.role == 'candidate' || isAdmin());
+      allow update: if isAuthenticated() && isOwner(userId) && isValidUser(request.resource.data) && 
+                    (request.resource.data.role == resource.data.role || isAdmin()) &&
+                    request.resource.data.uid == resource.data.uid &&
+                    request.resource.data.createdAt == resource.data.createdAt;
+      allow delete: if isAdmin();
+    }
+
+    match /jobs/{jobId} {
+      allow read: if true;
+      allow create: if isRecruiter() && isValidJob(request.resource.data) && request.resource.data.postedBy == request.auth.uid;
+      allow update: if (isRecruiter() && resource.data.postedBy == request.auth.uid || isAdmin()) && 
+                    isValidJob(request.resource.data) && 
+                    request.resource.data.postedBy == resource.data.postedBy &&
+                    request.resource.data.createdAt == resource.data.createdAt;
+      allow delete: if isRecruiter() && resource.data.postedBy == request.auth.uid || isAdmin();
+    }
+  }
+}
